@@ -1293,7 +1293,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	}
 
 	// モデル読み込み
-	ModelData modelData = LoadObjFile("Resource", "plane.obj");
+	ModelData modelData = LoadObjFile("Resource", "fence.obj");
 	// 頂点バッファ用リソースを作成
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource = CreateBufferResource(device, sizeof(VertexData) * modelData.vertices.size());
 
@@ -1446,7 +1446,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	const uint32_t descriptorSizeDSV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
 	// TextureをtextureResource 読んで転送
-	DirectX::ScratchImage mipImages = LoadTexture("Resource/uvChecker.png");
+	DirectX::ScratchImage mipImages = LoadTexture("Resource/fence.png");
 	const DirectX::TexMetadata& metadata = mipImages.GetMetadata();
 	Microsoft::WRL::ComPtr<ID3D12Resource> textureResource = CreateTextureResource(device, metadata);
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource = UploadTextureData(textureResource, mipImages, device, commandList);
@@ -1697,7 +1697,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			// インデックスバッファビューを設定
 			commandList->IASetIndexBuffer(&indexBufferViewSprite);
 			// インデックスを使って描画（Sprite）
-			commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+			//commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
 
 			// 実際のcommandListのImGuiの描画コマンドを詰む
