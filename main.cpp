@@ -168,6 +168,18 @@ Transform uvTransformSprite{
 	{0.0f,0.0f,0.0f},
 };
 
+// ブレンドモード
+enum BlendMode {
+	kBlendModeNone,		// ブレンドなし
+	kBlendModeNormal,	// 通常ブレンド
+	kBlendModeAdd,		// 加算
+	kBlendModeSubtract,	// 減算
+	kBlendModeMultiply,	// 乗算
+	kBlendModeScreen,	// スクリーン
+	kCountOfBlendMode,	// ブレンドモードの数
+};
+BlendMode blendMode = kBlendModeNormal;
+
 // SRV切り替え
 bool useMonsterBall = true;
 
@@ -1169,10 +1181,31 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// 全ての色要素を書き込む
 	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	
+
 	blendDesc.RenderTarget[0].BlendEnable = true; // ブレンドを有効にする
-	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+
+	if (blendMode == kBlendModeNormal) { // 通常のブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	} else if (blendMode == kBlendModeAdd) { // 加算ブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	} else if (blendMode == kBlendModeSubtract) { // 減算ブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_REV_SUBTRACT;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	} else if (blendMode == kBlendModeMultiply) { // 乗算ブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ZERO;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_SRC_COLOR;
+	} else if (blendMode == kBlendModeScreen) { // スクリーンブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	}
+
 	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
 	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
 	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
@@ -1587,7 +1620,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 			// 色
 			ImGui::ColorEdit4("ModelColor", &materialData->color.x);
-
 
 			// UVTransform用の行列を生成
 			Matrix4x4 uvTransformMatrix = MakeScaleMatrix(uvTransformSprite.scale);
