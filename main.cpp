@@ -171,6 +171,9 @@ Transform uvTransformSprite{
 // SRV切り替え
 bool useMonsterBall = true;
 
+// インスタンス数
+uint32_t instanceCount = 10;
+
 // 単位行列の作成
 Matrix4x4 MakeIdentity4x4()
 {
@@ -1635,8 +1638,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 			// インデックスバッファビューを設定
 			commandList->IASetIndexBuffer(&indexBufferViewVertex);
-			// インデックスを使って描画（球）
-			commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
+			// インデックスを使って描画（モデル）
+			commandList->DrawInstanced(UINT(modelData.vertices.size()), instanceCount, 0, 0);
 
 			// Spriteの描画。変更が必要なものだけ変更する
 			commandList->IASetVertexBuffers(0, 1, &vertexBufferViewSprite);// VBVを設定
