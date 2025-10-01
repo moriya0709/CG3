@@ -1168,6 +1168,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_BLEND_DESC blendDesc{};
 	// 全ての色要素を書き込む
 	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	
+	blendDesc.RenderTarget[0].BlendEnable = true; // ブレンドを有効にする
+	blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+
 
 	// RasiterzerStateの設定
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
@@ -1484,6 +1493,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// カメラの初期化
 	debugCamera->Initialize();
 
+	// マウスの無効化
+	ImGuiIO& io = ImGui::GetIO();
 
 	// 音声読み込み
 	SoundData soundData1 = SoundLoadWave("Resource/Alarm01.wav");
@@ -1515,7 +1526,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			keyboard->GetDeviceState(sizeof(key), key);
 
 			// デバックカメラ
-			debugCamera->Update(hwnd);
+			if (!io.WantCaptureMouse) {
+				debugCamera->Update(hwnd);
+			}
 
 			// 数字の０キーが押されていたら
 			if (key[DIK_0])
@@ -1572,6 +1585,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ImGui::DragFloat3("translate", &transform.translate.x, 0.01f, -10.0f, 10.0f);
 			ImGui::DragFloat3("rotate", &transform.rotate.x, 0.01f, -10.0f, 10.0f);
 
+			// 色
+			ImGui::ColorEdit4("ModelColor", &materialData->color.x);
 
 
 			// UVTransform用の行列を生成
