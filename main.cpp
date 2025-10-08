@@ -1678,7 +1678,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ID3D12DescriptorHeap* heaps[] = { srvDescriptorHeap.Get() };
 			commandList->SetDescriptorHeaps(1, heaps);
 
-
 			// ƒ‚ƒfƒ‹‚ğ•`‰æ
 			commandList->RSSetViewports(1, &viewport); // Viewport‚ğİ’è
 			commandList->RSSetScissorRects(1, &scissorRect); // Scirssor‚ğİ’è
