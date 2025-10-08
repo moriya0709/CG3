@@ -161,6 +161,11 @@ struct SoundData
 	unsigned int bufferSize;
 };
 
+struct Particle {
+	Transform transform;
+	Vector3 velocity;
+};
+
 
 Transform uvTransformSprite{
 	{1.0f,1.0f,1.0f},
@@ -1473,12 +1478,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	device->CreateShaderResourceView(instancingResource.Get(), &instancingSrvDesc, instancingSrvHandleCPU);
 
 	//Transformの作成
-	Transform transforms[kNumInstance];
+	Particle particles[kNumInstance];
 	for (uint32_t index = 0; index < kNumInstance; ++index) {
-		transforms[index].scale = { 1.0f,1.0f,1.0f };
-		transforms[index].rotate = { 0.0f,0.0f,0.0f };
-		transforms[index].translate = { index * 0.1f,index * 0.1f,index * 0.1f };
+		particles[index].transform.scale = { 1.0f,1.0f,1.0f };
+		particles[index].transform.rotate = { 0.0f,0.0f,0.0f };
+		particles[index].transform.translate = { index * 0.1f,index * 0.1f,index * 0.1f };
+	
+		// 速度を上向きに設定
+		particles[index].velocity = { 0.0f,1.0f,0.0f };
 	}
+	const float kDeltaTime = 1.0f / 60.0f;
 
 	//*2枚目のテクスチャ*//
 
@@ -1541,9 +1550,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	ImGuiIO& io = ImGui::GetIO();
 
 	// 音声読み込み
-	SoundData soundData1 = SoundLoadWave("Resource/Alarm01.wav");
+	//SoundData soundData1 = SoundLoadWave("Resource/Alarm01.wav");
 	// 音声再生
-	SoundPlayWave(xAudio2, soundData1);
+	//SoundPlayWave(xAudio2, soundData1);
 
 	MSG msg{};
 	// ウィンドウのｘボタンが押されるまでループ
@@ -1596,11 +1605,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 			//WVP当を計算して、Resourceに描き込む
 			for (uint32_t index = 0; index < kNumInstance; ++index) {
-				Matrix4x4 worldMatrix = MakeAffineMatrix(transforms[index].scale, transforms[index].rotate, transforms[index].translate);
+				Matrix4x4 worldMatrix = MakeAffineMatrix(particles[index].transform.scale, particles[index].transform.rotate, particles[index].transform.translate);
 				Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 				Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatrix);
 				instancingData[index].WVP = worldViewProjectionMatrix;
 				instancingData[index].World = worldMatrix;
+
+				// パーティクルの速度を反映
+				particles[index].transform.translate += particles[index].velocity * kDeltaTime;
 			}
 
 
