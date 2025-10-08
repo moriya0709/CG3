@@ -21,6 +21,7 @@
 #include <wrl.h>
 #include <xaudio2.h>
 #include <dinput.h>
+#include <random>
 
 #include "DebugCamera.h"
 #include "Math.h"
@@ -178,6 +179,10 @@ bool useMonsterBall = true;
 
 // インスタンス数
 uint32_t instanceCount = 10;
+
+// 乱数生成器の初期化
+std::random_device seedGenerator;
+std::mt19937 randomEngine(seedGenerator());
 
 // 単位行列の作成
 Matrix4x4 MakeIdentity4x4()
@@ -1477,6 +1482,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_GPU_DESCRIPTOR_HANDLE instancingSrvHandleGPU = GetGPUDescriptorHandle(srvDescriptorHeap, desriptorSizeSRV, 3);
 	device->CreateShaderResourceView(instancingResource.Get(), &instancingSrvDesc, instancingSrvHandleCPU);
 
+	
 	//Transformの作成
 	Particle particles[kNumInstance];
 	for (uint32_t index = 0; index < kNumInstance; ++index) {
@@ -1484,8 +1490,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		particles[index].transform.rotate = { 0.0f,0.0f,0.0f };
 		particles[index].transform.translate = { index * 0.1f,index * 0.1f,index * 0.1f };
 	
-		// 速度を上向きに設定
-		particles[index].velocity = { 0.0f,1.0f,0.0f };
+		
+		// パーティクルの座標初期化
+		std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+
+		// パーティクルの速度を反映
+		particles[index].transform.translate = { distribution(randomEngine),distribution(randomEngine),distribution(randomEngine) };
+		particles[index].velocity = { distribution(randomEngine),distribution(randomEngine),distribution(randomEngine) };
 	}
 	const float kDeltaTime = 1.0f / 60.0f;
 
@@ -1549,6 +1560,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// マウスの無効化
 	ImGuiIO& io = ImGui::GetIO();
 
+
 	// 音声読み込み
 	//SoundData soundData1 = SoundLoadWave("Resource/Alarm01.wav");
 	// 音声再生
@@ -1603,6 +1615,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			transData->WVP = worldViewProjectionMatrix;   // WVP行列を設定
 			transData->World = worldMatrix; // World行列を設定
 
+			
 			//WVP当を計算して、Resourceに描き込む
 			for (uint32_t index = 0; index < kNumInstance; ++index) {
 				Matrix4x4 worldMatrix = MakeAffineMatrix(particles[index].transform.scale, particles[index].transform.rotate, particles[index].transform.translate);
@@ -1611,7 +1624,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				instancingData[index].WVP = worldViewProjectionMatrix;
 				instancingData[index].World = worldMatrix;
 
-				// パーティクルの速度を反映
 				particles[index].transform.translate += particles[index].velocity * kDeltaTime;
 			}
 
