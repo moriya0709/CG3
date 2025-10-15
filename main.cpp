@@ -194,7 +194,7 @@ enum BlendMode {
 	kBlendModeScreen,	// スクリーン
 	kCountOfBlendMode,	// ブレンドモードの数
 };
-BlendMode blendMode = kBlendModeNormal;
+BlendMode blendMode = kBlendModeAdd;
 
 // SRV切り替え
 bool useMonsterBall = true;
@@ -1299,7 +1299,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// Depthの機能を有効化する
 	depthStencilDesc.DepthEnable = true;
 	// 書き込みします
-	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 	// 比較関数はLessEqual。つまり、近ければ描画される
 	depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 
@@ -1529,7 +1529,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	const uint32_t descriptorSizeDSV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
 	// TextureをtextureResource 読んで転送
-	DirectX::ScratchImage mipImages = LoadTexture("Resource/uvChecker.png");
+	DirectX::ScratchImage mipImages = LoadTexture("Resource/circle.png");
 	const DirectX::TexMetadata& metadata = mipImages.GetMetadata();
 	Microsoft::WRL::ComPtr<ID3D12Resource> textureResource = CreateTextureResource(device, metadata);
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource = UploadTextureData(textureResource, mipImages, device, commandList);
