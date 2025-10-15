@@ -22,6 +22,7 @@
 #include <xaudio2.h>
 #include <dinput.h>
 #include <random>
+#include <numbers>
 
 #include "DebugCamera.h"
 #include "Math.h"
@@ -86,7 +87,7 @@ Transform tranaformSprite
 Transform cameraTransform
 {
 	{ 1.0f, 1.0f, 1.0f }, // scale
-	{ 0.0f, 0.0f, 0.0f }, // rotate
+	{ std::numbers::pi_v<float> / 3.0f,std::numbers::pi_v<float>,0.0f }, // rotate
 	{ 0.0f, 0.0f, -5.0f } // translate
 };
 
@@ -205,6 +206,9 @@ uint32_t instanceCount = 10;
 // 乱数生成器の初期化
 std::random_device seedGenerator;
 std::mt19937 randomEngine(seedGenerator());
+
+// カメラ目線切り換え
+bool useBillboard = true;
 
 // 単位行列の作成
 Matrix4x4 MakeIdentity4x4()
@@ -1684,7 +1688,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			transData->WVP = worldViewProjectionMatrix;   // WVP行列を設定
 			transData->world = worldMatrix; // World行列を設定
 
-
 			//WVP当を計算して、Resourceに描き込む
 			uint32_t numInstance = 0; // 今のインスタンス数
 			for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
@@ -1693,13 +1696,32 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 					continue;
 				}
 
-				Matrix4x4 worldMatrix = MakeAffineMatrix(particles[index].transform.scale, particles[index].transform.rotate, particles[index].transform.translate);
+				// 表面がカメラの方を向くようにする
+				Matrix4x4 backToFrontMatrix = MakeRotateYMatrix(std::numbers::pi_v<float>);
+
+				// カメラの向きに合わせる(デバックカメラに合わせている)
+				Matrix4x4 billboardMatrix = Multiply(backToFrontMatrix, debugCamera->cameraMatrix_);
+				billboardMatrix.m[3][0] = 0.0f;
+				billboardMatrix.m[3][1] = 0.0f;
+				billboardMatrix.m[3][2] = 0.0f;
+
+				Matrix4x4 worldMatrix;
+				// カメラ目線かどうか
+				if (useBillboard) {
+					Matrix4x4 scaleMatrix = MakeScaleMatrix(particles[index].transform.scale);
+					Matrix4x4 translateMatrix = MakeTranslateMatrix(particles[index].transform.translate);
+
+					worldMatrix = scaleMatrix * billboardMatrix * translateMatrix;
+				} else {
+					worldMatrix = MakeAffineMatrix(particles[index].transform.scale, particles[index].transform.rotate, particles[index].transform.translate);
+				}
+
 				Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 				Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatrix);
 				
-				particles[index].transform.translate += particles[index].velocity * kDeltaTime;
+				//particles[index].transform.translate += particles[index].velocity * kDeltaTime;
 				particles[index].currentTime += kDeltaTime; // 経過時間を足す
-				
+				particles[index].currentTime = 0.0f;
 				// 徐々に透明にする
 				float alpha = 1.0f - (particles[index].currentTime / particles[index].lifeTime);
 
@@ -1735,6 +1757,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 			// SRVの切り替え
 			ImGui::Checkbox("UseMonsterBall", &useMonsterBall);
+			// カメラ目線の切り換え
+			ImGui::Checkbox("useBillboard", &useBillboard);
 
 			// UV座標
 			ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
