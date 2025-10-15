@@ -184,6 +184,18 @@ Transform uvTransformSprite{
 	{0.0f,0.0f,0.0f},
 };
 
+// ブレンドモード
+enum BlendMode {
+	kBlendModeNone,		// ブレンドなし
+	kBlendModeNormal,	// 通常ブレンド
+	kBlendModeAdd,		// 加算
+	kBlendModeSubtract,	// 減算
+	kBlendModeMultiply,	// 乗算
+	kBlendModeScreen,	// スクリーン
+	kCountOfBlendMode,	// ブレンドモードの数
+};
+BlendMode blendMode = kBlendModeNormal;
+
 // SRV切り替え
 bool useMonsterBall = true;
 
@@ -1221,6 +1233,34 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	D3D12_BLEND_DESC blendDesc{};
 	// 全ての色要素を書き込む
 	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	blendDesc.RenderTarget[0].BlendEnable = true; // ブレンドを有効にする
+
+	if (blendMode == kBlendModeNormal) { // 通常のブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	} else if (blendMode == kBlendModeAdd) { // 加算ブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	} else if (blendMode == kBlendModeSubtract) { // 減算ブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_REV_SUBTRACT;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	} else if (blendMode == kBlendModeMultiply) { // 乗算ブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ZERO;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_SRC_COLOR;
+	} else if (blendMode == kBlendModeScreen) { // スクリーンブレンド
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_INV_DEST_COLOR;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+	}
+
+	blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+	blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+
 
 	// RasiterzerStateの設定
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
@@ -1659,9 +1699,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				
 				particles[index].transform.translate += particles[index].velocity * kDeltaTime;
 				particles[index].currentTime += kDeltaTime; // 経過時間を足す
+				
+				// 徐々に透明にする
+				float alpha = 1.0f - (particles[index].currentTime / particles[index].lifeTime);
+
+
 				instancingData[numInstance].WVP = worldViewProjectionMatrix;
 				instancingData[numInstance].world = worldMatrix;
 				instancingData[numInstance].color = particles[index].color;
+				instancingData[numInstance].color.w = alpha;
 				++numInstance; // 生きているParticleの数を1つカウントする
 
 			}
