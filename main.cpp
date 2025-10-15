@@ -109,12 +109,12 @@ struct Material
 struct TransformationMatrix
 {
 	Matrix4x4 WVP;
-	Matrix4x4 World;
+	Matrix4x4 world;
 };
 
 struct ParticleForGPU {
 	Matrix4x4 WVP;
-	Matrix4x4 World;
+	Matrix4x4 world;
 	Vector4 color;
 };
 
@@ -173,6 +173,8 @@ struct Particle {
 	Transform transform;
 	Vector3 velocity;
 	Vector4 color;
+	float lifeTime;
+	float currentTime;
 };
 
 
@@ -806,6 +808,11 @@ Particle MakeNewParticle(std::mt19937& randomEngine) {
 	std::uniform_real_distribution<float> distColor(0.0f, 1.0f);
 	particle.color = { distColor(randomEngine),distColor(randomEngine),distColor(randomEngine),1.0f };
 	
+	// ランダムに1~3秒の間生存するようにする
+	std::uniform_real_distribution<float> distTime(1.0f, 3.0f);
+	particle.lifeTime = distTime(randomEngine);
+	particle.currentTime = 0.0f;
+
 	return particle;
 }
 
@@ -1397,25 +1404,26 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	// --- Instancing --- //
 
-	const uint32_t kNumInstance = 10; // インスタンス数
+	const uint32_t kNumMaxInstance = 10; // インスタンス数
 
 	// パーティクルの作成
-	Particle particles[kNumInstance];
-	for (uint32_t index = 0; index < kNumInstance; ++index) {
+	Particle particles[kNumMaxInstance];
+	for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
 		particles[index] = MakeNewParticle(randomEngine);
 	}
+
 	const float kDeltaTime = 1.0f / 60.0f;
 
 	// Instancing用のTransformationMatrixリソースを作る
 	Microsoft::WRL::ComPtr<ID3D12Resource> instancingResource = 
-		CreateBufferResource(device, sizeof(ParticleForGPU) * kNumInstance);
+		CreateBufferResource(device, sizeof(ParticleForGPU) * kNumMaxInstance);
 	// 書き込むためのアドレスを取得
 	ParticleForGPU* instancingData = nullptr;
 	instancingResource->Map(0, nullptr, reinterpret_cast<void**>(&instancingData));
 	// 単位行列を書き込んでおく
-	for (uint32_t index = 0; index < kNumInstance; ++index) {
+	for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
 		instancingData[index].WVP = MakeIdentity4x4();
-		instancingData[index].World = MakeIdentity4x4();
+		instancingData[index].world = MakeIdentity4x4();
 		instancingData[index].color = particles[index].color;
 	}
 
@@ -1509,7 +1517,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	instancingSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
 	instancingSrvDesc.Buffer.FirstElement = 0;
 	instancingSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-	instancingSrvDesc.Buffer.NumElements = kNumInstance;
+	instancingSrvDesc.Buffer.NumElements = kNumMaxInstance;
 	instancingSrvDesc.Buffer.StructureByteStride = sizeof(ParticleForGPU);
 
 	D3D12_CPU_DESCRIPTOR_HANDLE instancingSrvHandleCPU = GetCPUDescriptorHandle(srvDescriptorHeap, desriptorSizeSRV, 3);
@@ -1582,6 +1590,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// 音声再生
 	//SoundPlayWave(xAudio2, soundData1);
 
+	// パーティクルのサイズ
+	for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
+		particles[index].transform.scale = { 0.5f,0.5f,0.5f };
+	}
+
 	MSG msg{};
 	// ウィンドウのｘボタンが押されるまでループ
 	while (msg.message != WM_QUIT)
@@ -1629,18 +1642,28 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			Matrix4x4 worldViewProjectionMatrix = Multiply(Multiply(worldMatrix, viewMatrix), projectionMatrix);
 			*wvpData = worldViewProjectionMatrix;
 			transData->WVP = worldViewProjectionMatrix;   // WVP行列を設定
-			transData->World = worldMatrix; // World行列を設定
+			transData->world = worldMatrix; // World行列を設定
 
-			
+
 			//WVP当を計算して、Resourceに描き込む
-			for (uint32_t index = 0; index < kNumInstance; ++index) {
+			uint32_t numInstance = 0; // 今のインスタンス数
+			for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
+				// 生存時間を超えていたらスキップ
+				if (particles[index].lifeTime <= particles[index].currentTime) {
+					continue;
+				}
+
 				Matrix4x4 worldMatrix = MakeAffineMatrix(particles[index].transform.scale, particles[index].transform.rotate, particles[index].transform.translate);
 				Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 				Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatrix);
-				instancingData[index].WVP = worldViewProjectionMatrix;
-				instancingData[index].World = worldMatrix;
-
+				
 				particles[index].transform.translate += particles[index].velocity * kDeltaTime;
+				particles[index].currentTime += kDeltaTime; // 経過時間を足す
+				instancingData[numInstance].WVP = worldViewProjectionMatrix;
+				instancingData[numInstance].world = worldMatrix;
+				instancingData[numInstance].color = particles[index].color;
+				++numInstance; // 生きているParticleの数を1つカウントする
+
 			}
 
 
@@ -1676,7 +1699,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ImGui::DragFloat3("scale", &transform.scale.x, 0.01f, -10.0f, 10.0f);
 			ImGui::DragFloat3("translate", &transform.translate.x, 0.01f, -10.0f, 10.0f);
 			ImGui::DragFloat3("rotate", &transform.rotate.x, 0.01f, -10.0f, 10.0f);
-
 
 
 			// UVTransform用の行列を生成
@@ -1741,7 +1763,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			// インデックスバッファビューを設定
 			commandList->IASetIndexBuffer(&indexBufferViewVertex);
 			// インデックスを使って描画（モデル）
-			commandList->DrawInstanced(UINT(modelData.vertices.size()), kNumInstance, 0, 0);
+			if (numInstance > 0) {
+				commandList->DrawInstanced(UINT(modelData.vertices.size()), numInstance, 0, 0);
+			}
 
 			// Spriteの描画。変更が必要なものだけ変更する
 			commandList->IASetVertexBuffers(0, 1, &vertexBufferViewSprite);// VBVを設定
