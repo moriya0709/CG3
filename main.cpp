@@ -185,6 +185,11 @@ struct Emitter {
 	float frequencyTime; //!< 頻度用時刻
 };
 
+struct AccelerationField {
+	Vector3 acceleration; //!< 加速度
+	AABB area; //!< 範囲
+};
+
 
 Transform uvTransformSprite{
 	{1.0f,1.0f,1.0f},
@@ -216,6 +221,9 @@ std::mt19937 randomEngine(seedGenerator());
 
 // カメラ目線切り換え
 bool useBillboard = true;
+
+// Fieldのon/off
+bool useField = true;
 
 // 単位行列の作成
 Matrix4x4 MakeIdentity4x4()
@@ -847,6 +855,23 @@ std::list<Particle> Emit(const Emitter& emitter, std::mt19937& randomEngine) {
 		particles.push_back(MakeNewParticle(randomEngine,emitter.transform.translate));
 	}
 	return particles;
+}
+
+// aabbとpointの当たり判定
+bool IsCollision(const AABB& aabb, const Vector3& point) {
+	// 各軸について、点がAABBの範囲内にあるかを確認
+	if (point.x < aabb.min.x || point.x > aabb.max.x) {
+		return false;
+	}
+	if (point.y < aabb.min.y || point.y > aabb.max.y) {
+		return false;
+	}
+	if (point.z < aabb.min.z || point.z > aabb.max.z) {
+		return false;
+	}
+
+	// すべての軸で範囲内なら、衝突（中にある）
+	return true;
 }
 
 // Windowsアプリでのエントリーポイント(main関数)
@@ -1482,6 +1507,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	particles.push_back(MakeNewParticle(randomEngine, emitter.transform.translate));
 	particles.push_back(MakeNewParticle(randomEngine, emitter.transform.translate));
 
+	// フィールドの設定
+	AccelerationField accelerationField;
+	accelerationField.acceleration = { 15.0f,0.0f,0.0f };
+	accelerationField.area.min = { -1.0f,-1.0f,-1.0f };
+	accelerationField.area.max = { 1.0f,1.0f,1.0f };
+
 
 	const float kDeltaTime = 1.0f / 60.0f;
 
@@ -1755,10 +1786,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 				Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatrix);
 				
-				particle.transform.translate += particle.velocity * kDeltaTime;
+				// Fieldの範囲内のParticleには加速度を適用する(風)
+				if (useField) {
+					if (IsCollision(accelerationField.area, (*particleIterator).transform.translate)) {
+						(*particleIterator).velocity += accelerationField.acceleration * kDeltaTime;
+					}
+				}
+				// 速度を適用
+				(*particleIterator).transform.translate += (*particleIterator).velocity * kDeltaTime;
+				
 				particle.currentTime += kDeltaTime; // 経過時間を足す
 				// 徐々に透明にする
 				float alpha = 1.0f - (particle.currentTime / particle.lifeTime);
+
 
 				if (numInstance < kNumMaxInstance) {
 					instancingData[numInstance].WVP = worldViewProjectionMatrix;
@@ -1797,6 +1837,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ImGui::Checkbox("UseMonsterBall", &useMonsterBall);
 			// カメラ目線の切り換え
 			ImGui::Checkbox("useBillboard", &useBillboard);
+			// フィールドの切り換え
+			ImGui::Checkbox("useField", &useField);
 
 			// UV座標
 			ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
