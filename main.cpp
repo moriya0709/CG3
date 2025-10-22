@@ -178,6 +178,13 @@ struct Particle {
 	float currentTime;
 };
 
+struct Emitter {
+	Transform transform; //!< エミッタのTransform
+	uint32_t count; //!< 発生数
+	float frequency; //!< 発生頻度
+	float frequencyTime; //!< 頻度用時刻
+};
+
 
 Transform uvTransformSprite{
 	{1.0f,1.0f,1.0f},
@@ -812,12 +819,13 @@ void SoundPlayWave(Microsoft::WRL::ComPtr<IXAudio2> xAudio2, const SoundData& so
 }
 
 // パーティクル生成関数
-Particle MakeNewParticle(std::mt19937& randomEngine) {
+Particle MakeNewParticle(std::mt19937& randomEngine,const Vector3& translate) {
 	std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
 	Particle particle;
 	particle.transform.scale = { 1.0f,1.0f,1.0f };
 	particle.transform.rotate = { 0.0f,0.0f,0.0f };
-	particle.transform.translate = { distribution(randomEngine),distribution(randomEngine),distribution(randomEngine) };
+	Vector3 randomTranslate{ distribution(randomEngine),distribution(randomEngine),distribution(randomEngine) };
+	particle.transform.translate = translate + randomTranslate;
 	particle.velocity = { distribution(randomEngine),distribution(randomEngine),distribution(randomEngine) };
 	
 	// 色
@@ -830,6 +838,15 @@ Particle MakeNewParticle(std::mt19937& randomEngine) {
 	particle.currentTime = 0.0f;
 
 	return particle;
+}
+
+// Particleの発生関数
+std::list<Particle> Emit(const Emitter& emitter, std::mt19937& randomEngine) {
+	std::list<Particle> particles;
+	for (uint32_t count = 0; count < emitter.count; ++count) {
+		particles.push_back(MakeNewParticle(randomEngine,emitter.transform.translate));
+	}
+	return particles;
 }
 
 // Windowsアプリでのエントリーポイント(main関数)
@@ -1448,13 +1465,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	// --- Instancing --- //
 
-	const uint32_t kNumMaxInstance = 10; // インスタンス数
+	const uint32_t kNumMaxInstance = 100; // インスタンス数
+
+	// パーティクルエミッタの設定
+	Emitter emitter{};
+	emitter.transform.translate = { 0.0f,0.0f,0.0f };
+	emitter.transform.rotate = { 0.0f,0.0f,0.0f };
+	emitter.transform.scale = { 1.0f,1.0f,1.0f };
+	emitter.count = 3;
+	emitter.frequency = 0.5f;
+	emitter.frequencyTime = 0.0f;
 
 	// パーティクルの作成
-	Particle particles[kNumMaxInstance];
-	for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
-		particles[index] = MakeNewParticle(randomEngine);
-	}
+	std::list<Particle>particles;
+	particles.push_back(MakeNewParticle(randomEngine, emitter.transform.translate));
+	particles.push_back(MakeNewParticle(randomEngine, emitter.transform.translate));
+	particles.push_back(MakeNewParticle(randomEngine, emitter.transform.translate));
+
 
 	const float kDeltaTime = 1.0f / 60.0f;
 
@@ -1468,7 +1495,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
 		instancingData[index].WVP = MakeIdentity4x4();
 		instancingData[index].world = MakeIdentity4x4();
-		instancingData[index].color = particles[index].color;
+		instancingData[index].color = particles.front().color;
 	}
 
 	
@@ -1635,9 +1662,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	//SoundPlayWave(xAudio2, soundData1);
 
 	// パーティクルのサイズ
-	for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
-		particles[index].transform.scale = { 0.5f,0.5f,0.5f };
-	}
+	particles.front().transform.scale = { 0.5f,0.5f,0.5f };
 
 	MSG msg{};
 	// ウィンドウのｘボタンが押されるまでループ
@@ -1676,6 +1701,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 			// y軸回転処理
 			transform.rotate.y = 3.00f;
+
+			// 時間経過によって発生させる
+			emitter.frequencyTime += kDeltaTime; // 時刻を進める
+			if (emitter.frequency <= emitter.frequencyTime) { // 頻度より大きいなら発生
+				particles.splice(particles.end(), Emit(emitter, randomEngine)); // 発生処理
+				emitter.frequencyTime -= emitter.frequency; // 余計に過ぎた時間も紙して頻度計算する
+			}
 			
 			Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
 			Matrix4x4 cameraMatrix = MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate);
@@ -1690,9 +1722,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 			//WVP当を計算して、Resourceに描き込む
 			uint32_t numInstance = 0; // 今のインスタンス数
-			for (uint32_t index = 0; index < kNumMaxInstance; ++index) {
+			for(std::list<Particle>::iterator particleIterator = particles.begin(); particleIterator != particles.end();){
+				// 現在のパーティクル参照を変数に
+				Particle& particle = *particleIterator;
+				
 				// 生存時間を超えていたらスキップ
-				if (particles[index].lifeTime <= particles[index].currentTime) {
+				if ((*particleIterator).lifeTime <= (*particleIterator).currentTime) {
+					particleIterator = particles.erase(particleIterator); // 生存期間が過ぎたParticleはlistから消す。戻り値が次のイテレーターとなる
 					continue;
 				}
 
@@ -1708,30 +1744,32 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				Matrix4x4 worldMatrix;
 				// カメラ目線かどうか
 				if (useBillboard) {
-					Matrix4x4 scaleMatrix = MakeScaleMatrix(particles[index].transform.scale);
-					Matrix4x4 translateMatrix = MakeTranslateMatrix(particles[index].transform.translate);
+					Matrix4x4 scaleMatrix = MakeScaleMatrix(particle.transform.scale);
+					Matrix4x4 translateMatrix = MakeTranslateMatrix(particle.transform.translate);
 
 					worldMatrix = scaleMatrix * billboardMatrix * translateMatrix;
 				} else {
-					worldMatrix = MakeAffineMatrix(particles[index].transform.scale, particles[index].transform.rotate, particles[index].transform.translate);
+					worldMatrix = MakeAffineMatrix(particle.transform.scale, particle.transform.rotate, particle.transform.translate);
 				}
 
 				Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 				Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, viewProjectionMatrix);
 				
-				//particles[index].transform.translate += particles[index].velocity * kDeltaTime;
-				particles[index].currentTime += kDeltaTime; // 経過時間を足す
-				particles[index].currentTime = 0.0f;
+				particle.transform.translate += particle.velocity * kDeltaTime;
+				particle.currentTime += kDeltaTime; // 経過時間を足す
 				// 徐々に透明にする
-				float alpha = 1.0f - (particles[index].currentTime / particles[index].lifeTime);
+				float alpha = 1.0f - (particle.currentTime / particle.lifeTime);
 
+				if (numInstance < kNumMaxInstance) {
+					instancingData[numInstance].WVP = worldViewProjectionMatrix;
+					instancingData[numInstance].world = worldMatrix;
+					instancingData[numInstance].color = particle.color;
+					instancingData[numInstance].color.w = alpha;
+					++numInstance; // 生きているParticleの数を1つカウントする
 
-				instancingData[numInstance].WVP = worldViewProjectionMatrix;
-				instancingData[numInstance].world = worldMatrix;
-				instancingData[numInstance].color = particles[index].color;
-				instancingData[numInstance].color.w = alpha;
-				++numInstance; // 生きているParticleの数を1つカウントする
+				}
 
+				++particleIterator; // 次のイテレーターに進める
 			}
 
 
@@ -1770,6 +1808,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ImGui::DragFloat3("translate", &transform.translate.x, 0.01f, -10.0f, 10.0f);
 			ImGui::DragFloat3("rotate", &transform.rotate.x, 0.01f, -10.0f, 10.0f);
 
+			// Particleを追加で出す
+			if (ImGui::Button("Add Particle")) {
+				particles.splice(particles.end(), Emit(emitter, randomEngine));
+			}
+
+			// パーティクルの座標変更
+			ImGui::DragFloat3("EmitterTranslate", &emitter.transform.translate.x, 0.01f, -100.0f, 100.0f);
 
 			// UVTransform用の行列を生成
 			Matrix4x4 uvTransformMatrix = MakeScaleMatrix(uvTransformSprite.scale);
