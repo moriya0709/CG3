@@ -61,7 +61,7 @@ void DebugCamera::Update(HWND hwnd)
 	Matrix4x4 matTranslateToOrigin = MakeTranslateMatrix(-target);
 	Matrix4x4 matTranslateBack = MakeTranslateMatrix(target);
 
-	Matrix4x4 cameraMatrix_ = matTranslateBack * matRot_ * matTranslateToOrigin;
+	cameraMatrix_ = matTranslateBack * matRot_ * matTranslateToOrigin;
 
 	// カメラの位置を反映（距離分後退させる）
 	Matrix4x4 matCameraTranslate = MakeTranslateMatrix(translation_);

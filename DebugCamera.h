@@ -7,6 +7,8 @@ class DebugCamera
 {
 public:
 
+	Matrix4x4 cameraMatrix_;
+
 	// ‰Šú‰»
 	void Initialize();
 	// XV
