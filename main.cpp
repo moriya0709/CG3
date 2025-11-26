@@ -184,6 +184,7 @@ struct Emitter {
 	float frequency; //!< 発生頻度
 	float frequencyTime; //!< 頻度用時刻
 };
+Emitter emitter{};
 
 struct AccelerationField {
 	Vector3 acceleration; //!< 加速度
@@ -223,7 +224,23 @@ std::mt19937 randomEngine(seedGenerator());
 bool useBillboard = true;
 
 // Fieldのon/off
-bool useField = true;
+bool useField = false;
+
+// パーティクル共通データ
+std::uniform_real_distribution<float> distTranslate; // ランダムな座標範囲
+std::uniform_real_distribution<float> distVelocity; // ランダムな速度範囲
+std::uniform_real_distribution<float> distTime = std::uniform_real_distribution(1.0f, 3.0f); // ランダムな寿命範囲
+Vector3 ifTranslate; // ランダムな座標にするかどうか
+Vector3 velocity; // ランダムに動かすかどうか
+Vector4 color; // 色
+float lifeTime; // 寿命
+bool isRandTranslate[3] = { true }; // ランダムな座標にするかどうか
+bool isRandVelocity[3] = { true }; // ランダムに動かすかどうか
+bool isColorChange[3] = { false }; // 色変更するかどうか
+bool isScaleChange[3] = { false }; // スケール変更するかどうか
+float scaleAdd = 0.005f; // スケール変更量
+
+char fileName[20]; //パーティクルのファイル名
 
 // 単位行列の作成
 Matrix4x4 MakeIdentity4x4()
@@ -848,13 +865,175 @@ Particle MakeNewParticle(std::mt19937& randomEngine,const Vector3& translate) {
 	return particle;
 }
 
+// Particle生成関数(エディタ用)
+Particle MakeNewParticleEditor(
+	std::mt19937& randomEngine, 
+	const Vector3& translate, 
+	std::uniform_real_distribution<float>distTransform,
+	std::uniform_real_distribution<float>distVelocity,
+	std::uniform_real_distribution<float>distTime,
+	Vector3 ifTranslate, Vector3 velocity, Vector4 color
+) {
+	Particle particle;
+	particle.transform.scale = { 1.0f,1.0f,1.0f };
+	particle.transform.rotate = { 0.0f,0.0f,0.0f };
+	Vector3 randomTranslate{ distTransform(randomEngine),distTransform(randomEngine),distTransform(randomEngine) };
+
+	// ランダム座標を使用するかどうか(ifTranslateは 0または１)
+	randomTranslate.x *= ifTranslate.x;
+	randomTranslate.y *= ifTranslate.y;
+	randomTranslate.z *= ifTranslate.z;
+
+	particle.transform.translate = translate + randomTranslate;
+	particle.velocity = { distVelocity(randomEngine),distVelocity(randomEngine),distVelocity(randomEngine) };
+
+	// 速度を使用するかどうか(velocityは 0または１)
+	particle.velocity.x *= velocity.x;
+	particle.velocity.y *= velocity.y;
+	particle.velocity.z *= velocity.z;
+
+	// 色
+	particle.color = color;
+
+	// ランダムに1~3秒の間生存するようにする
+	particle.lifeTime = distTime(randomEngine);
+	particle.currentTime = 0.0f;
+
+	return particle;
+}
+
 // Particleの発生関数
-std::list<Particle> Emit(const Emitter& emitter, std::mt19937& randomEngine) {
+std::list<Particle> Emit(const Emitter& emitter, std::mt19937& randomEngine, 
+	std::uniform_real_distribution<float>distTransform,
+	std::uniform_real_distribution<float>distVelocity,
+	std::uniform_real_distribution<float>distTime,
+	Vector3 ifTranslate, Vector3 velocity, Vector4 color
+) {
 	std::list<Particle> particles;
 	for (uint32_t count = 0; count < emitter.count; ++count) {
-		particles.push_back(MakeNewParticle(randomEngine,emitter.transform.translate));
+		particles.push_back(MakeNewParticleEditor(randomEngine,emitter.transform.translate, distTransform, distVelocity, distTime, ifTranslate, velocity, color));
 	}
 	return particles;
+}
+
+// パーティクルのセーブ
+void SaveParticle(const std::string& filePath) {
+	std::ofstream file(filePath, std::ios::binary);
+	assert(file.is_open());
+	
+	// パーティクルの座標
+	file << emitter.transform.translate.x << "," << emitter.transform.translate.y << "\n";
+	// パーティクルの発生数
+	file << emitter.count << "\n";
+	// パーティクルの発生頻度
+	file << emitter.frequency << "\n";
+	// パーティクルのランダム座標
+	file << isRandTranslate[0] << "," << isRandTranslate[1] << "," << isRandTranslate[2] << "\n";
+	// パーティクルのランダム速度
+	file << isRandVelocity[0] << "," << isRandVelocity[1] << "," << isRandVelocity[2] << "\n";
+	// パーティクルの色
+	file << color.x << "," << color.y << "," << color.z << "," << color.w << "\n";
+	// パーティクルの色変化
+	file << isColorChange[0] << "," << isColorChange[1] << "," << isColorChange[2] << "\n";
+	// パーティクルのサイズ変化
+	file << isScaleChange[0] << "," << isScaleChange[1] << "," << isScaleChange[2] << "\n";
+	// パーティクルの発生範囲
+	file << distTranslate.a() << "," << distTranslate.b() << "\n";
+	// パーティクルの速度範囲
+	file << distVelocity.a() << "," << distVelocity.b() << "\n";
+	// パーティクルのサイズ追加数
+	file << scaleAdd << "\n";
+
+
+	file.close();
+}
+
+// パーティクルの読み込み
+void LoadParticle(const std::string& filePath) {
+	// ファイル読み込み
+	std::ifstream file(filePath);
+	assert(file.is_open());
+
+	std::string line;
+
+	// パーティクルの座標
+	if (std::getline(file, line)) {
+		auto s = line.find(',');
+		emitter.transform.translate.x = std::stof(line.substr(0, s));
+		emitter.transform.translate.y = std::stof(line.substr(s + 1));
+	}
+
+	// パーティクルの発生数
+	if (std::getline(file, line)) {
+		emitter.count = std::stoi(line);
+	}
+
+	// パーティクルの発生頻度
+	if (std::getline(file, line)) {
+		emitter.frequency = std::stof(line);
+	}
+
+	// ランダム座標（bool）
+	if (std::getline(file, line)) {
+		int a, b, c;
+		sscanf_s(line.c_str(), "%d,%d,%d", &a, &b, &c);
+		isRandTranslate[0] = (a != 0);
+		isRandTranslate[1] = (b != 0);
+		isRandTranslate[2] = (c != 0);
+	}
+
+	// ランダム速度（bool）
+	if (std::getline(file, line)) {
+		int a, b, c;
+		sscanf_s(line.c_str(), "%d,%d,%d", &a, &b, &c);
+		isRandVelocity[0] = (a != 0);
+		isRandVelocity[1] = (b != 0);
+		isRandVelocity[2] = (c != 0);
+	}
+
+	// 色
+	if (std::getline(file, line)) {
+		sscanf_s(line.c_str(), "%f,%f,%f,%f", &color.x, &color.y, &color.z, &color.w);
+	}
+
+	// 色変化（bool）
+	if (std::getline(file, line)) {
+		int a, b, c;
+		sscanf_s(line.c_str(), "%d,%d,%d", &a, &b, &c);
+		isColorChange[0] = (a != 0);
+		isColorChange[1] = (b != 0);
+		isColorChange[2] = (c != 0);
+	}
+
+	// サイズ変化（bool）
+	if (std::getline(file, line)) {
+		int a, b, c;
+		sscanf_s(line.c_str(), "%d,%d,%d", &a, &b, &c);
+		isScaleChange[0] = (a != 0);
+		isScaleChange[1] = (b != 0);
+		isScaleChange[2] = (c != 0);
+	}
+
+	// 発生範囲
+	if (std::getline(file, line)) {
+		float a, b;
+		sscanf_s(line.c_str(), "%f,%f", &a, &b);
+		distTranslate = std::uniform_real_distribution<float>(a, b);
+	}
+
+	// 速度範囲
+	if (std::getline(file, line)) {
+		float a, b;
+		sscanf_s(line.c_str(), "%f,%f", &a, &b);
+		distVelocity = std::uniform_real_distribution<float>(a, b);
+	}
+
+	// サイズ追加数
+	if (std::getline(file, line)) {
+		scaleAdd = std::stof(line);
+	}
+
+	file.close();
 }
 
 // aabbとpointの当たり判定
@@ -1493,11 +1672,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	const uint32_t kNumMaxInstance = 100; // インスタンス数
 
 	// パーティクルエミッタの設定
-	Emitter emitter{};
 	emitter.transform.translate = { 0.0f,0.0f,0.0f };
 	emitter.transform.rotate = { 0.0f,0.0f,0.0f };
 	emitter.transform.scale = { 1.0f,1.0f,1.0f };
-	emitter.count = 3;
+	emitter.count = 10;
 	emitter.frequency = 0.5f;
 	emitter.frequencyTime = 0.0f;
 
@@ -1733,10 +1911,36 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			// y軸回転処理
 			transform.rotate.y = 3.00f;
 
+			ifTranslate = { 0.0f };
+			velocity = { 0.0f };
+
+			// ランダムにするかどうか
+			if (isRandTranslate[0]) {
+				ifTranslate.x = 1.0f;
+			}
+			if (isRandTranslate[1]) {
+				ifTranslate.y = 1.0f;
+			}
+			if (isRandTranslate[2]) {
+				ifTranslate.z = 1.0f;
+			}
+
+			// ランダムにするかどうか
+			if (isRandVelocity[0]) {
+				velocity.x = 1.0f;
+			}
+			if (isRandVelocity[1]) {
+				velocity.y = 1.0f;
+			}
+			if (isRandVelocity[2]) {
+				velocity.z = 1.0f;
+			}
+
+
 			// 時間経過によって発生させる
 			emitter.frequencyTime += kDeltaTime; // 時刻を進める
 			if (emitter.frequency <= emitter.frequencyTime) { // 頻度より大きいなら発生
-				particles.splice(particles.end(), Emit(emitter, randomEngine)); // 発生処理
+				particles.splice(particles.end(), Emit(emitter, randomEngine, distTranslate, distVelocity, distTime, ifTranslate, velocity, color)); // 発生処理
 				emitter.frequencyTime -= emitter.frequency; // 余計に過ぎた時間も紙して頻度計算する
 			}
 			
@@ -1799,6 +2003,27 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				// 徐々に透明にする
 				float alpha = 1.0f - (particle.currentTime / particle.lifeTime);
 
+				// 色を徐々に変化させる
+				if (isColorChange[0]) {
+					particle.color.x = 0.5f - (particle.currentTime / particle.lifeTime);
+				}
+				if (isColorChange[1]) {
+					particle.color.y = 0.5f - (particle.currentTime / particle.lifeTime);
+				}
+				if (isColorChange[2]) {
+					particle.color.z = 0.5f - (particle.currentTime / particle.lifeTime);
+				}
+
+				// サイズを徐々に変化させる
+				if (isScaleChange[0]) {
+					particle.transform.scale.x += scaleAdd;
+				}
+				if (isScaleChange[1]) {
+					particle.transform.scale.y += scaleAdd;
+				}
+				if (isScaleChange[2]) {
+					particle.transform.scale.z += scaleAdd;
+				}
 
 				if (numInstance < kNumMaxInstance) {
 					instancingData[numInstance].WVP = worldViewProjectionMatrix;
@@ -1851,12 +2076,78 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ImGui::DragFloat3("rotate", &transform.rotate.x, 0.01f, -10.0f, 10.0f);
 
 			// Particleを追加で出す
-			if (ImGui::Button("Add Particle")) {
-				particles.splice(particles.end(), Emit(emitter, randomEngine));
-			}
+			//if (ImGui::Button("Add Particle")) {
+			//	particles.splice(particles.end(), Emit(emitter, randomEngine));
+			//}
 
 			// パーティクルの座標変更
 			ImGui::DragFloat3("EmitterTranslate", &emitter.transform.translate.x, 0.01f, -100.0f, 100.0f);
+
+			// パーティクルの状態
+			if (ImGui::Button("FIRE", ImVec2(50, 50))) {
+				LoadParticle("Resource/Particle/fire.csv");
+			}
+			ImGui::SameLine(); // 横並びにする
+			if (ImGui::Button("Explosion", ImVec2(50, 50))) {
+				LoadParticle("Resource/Particle/explosion.csv");
+			}
+			ImGui::SameLine(); // 横並びにする
+			if (ImGui::Button("Snow", ImVec2(50, 50))) {
+				LoadParticle("Resource/Particle/snow.csv");
+			}
+
+			// パーティクルの発生数
+			ImGui::SliderInt("EmitterCount", (int*)&emitter.count, 1, 100);
+			// パーティクルの発生頻度
+			ImGui::SliderFloat("EmitterFrequency", &emitter.frequency, 0.01f, 5.0f);
+			// パーティクルのランダム座標
+			ImGui::Checkbox("randTranslate.x", &isRandTranslate[0]);
+			ImGui::Checkbox("randTranslate.y", &isRandTranslate[1]);
+			ImGui::Checkbox("randTranslate.z", &isRandTranslate[2]);
+			// パーティクルのランダム速度
+			ImGui::Checkbox("randVelocity.x", &isRandVelocity[0]);
+			ImGui::Checkbox("randVelocity.y", &isRandVelocity[1]);
+			ImGui::Checkbox("randVelocity.z", &isRandVelocity[2]);
+			// パーティクルの色
+			ImGui::ColorEdit4("ParticleColor", &color.x);
+			// パーティクルの色変化
+			ImGui::Checkbox("colorChange.x", &isColorChange[0]);
+			ImGui::Checkbox("colorChange.y", &isColorChange[1]);
+			ImGui::Checkbox("colorChange.z", &isColorChange[2]);
+			// パーティクルのサイズ変化
+
+			ImGui::Checkbox("scaleChange.x", &isScaleChange[0]);
+			ImGui::Checkbox("scaleChange.y", &isScaleChange[1]);
+			ImGui::Checkbox("scaleChange.z", &isScaleChange[2]);
+
+
+			// パーティクルの発生範囲
+			ImGui::SliderFloat2("distTranslate", (float*)&distTranslate, -100.0f, 100.0f);
+			// パーティクルの速度範囲
+			ImGui::SliderFloat2("distVelocity", (float*)&distVelocity, -100.0f, 100.0f);
+			// パーティクルのサイズ追加数
+			ImGui::SliderFloat("scaleAdd", &scaleAdd, -0.05f, 0.05f);
+
+			// ファイル名
+			ImGui::InputText("FileName", fileName, IM_ARRAYSIZE(fileName));
+
+			// セーブ
+			if (ImGui::Button("SaveParticles")) {
+				std::string path = "Resource/Particle/";
+				path += fileName;
+				path += ".csv";   // 拡張子を自動付与
+
+				SaveParticle(path);
+			}
+			// ロード
+			if (ImGui::Button("LoadParticles")) {
+				std::string path = "Resource/Particle/";
+				path += fileName;
+				path += ".csv";   // 拡張子を自動付与
+
+				LoadParticle(path);
+			}
+
 
 			// UVTransform用の行列を生成
 			Matrix4x4 uvTransformMatrix = MakeScaleMatrix(uvTransformSprite.scale);

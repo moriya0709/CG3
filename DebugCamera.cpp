@@ -51,6 +51,14 @@ void DebugCamera::Update(HWND hwnd)
 		matRot_ = matRotDelta * matRot_;
 	}
 
+	// z軸移動
+	if (GetAsyncKeyState(VK_UP) & 0x8000) {
+		translation_.z += 0.1f;
+	}
+	if (GetAsyncKeyState(VK_DOWN) & 0x8000) {
+		translation_.z -= 0.1f;
+	}
+
 	// マウス位置更新
 	prevMouseX = mousePosition.x;
 	prevMouseY = mousePosition.y;
