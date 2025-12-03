@@ -2001,7 +2001,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				
 				particle.currentTime += kDeltaTime; // 経過時間を足す
 				// 徐々に透明にする
-				float alpha = 1.0f - (particle.currentTime / particle.lifeTime);
+				//float alpha = 1.0f - (particle.currentTime / particle.lifeTime);
 
 				// 色を徐々に変化させる
 				if (isColorChange[0]) {
@@ -2029,7 +2029,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 					instancingData[numInstance].WVP = worldViewProjectionMatrix;
 					instancingData[numInstance].world = worldMatrix;
 					instancingData[numInstance].color = particle.color;
-					instancingData[numInstance].color.w = alpha;
+					instancingData[numInstance].color.w = 1.0f;
 					++numInstance; // 生きているParticleの数を1つカウントする
 
 				}
