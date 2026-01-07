@@ -103,6 +103,7 @@ struct Material
 	int32_t enableLighting;
 	float padding[3];
 	Matrix4x4 uvTransform;
+	float shininess;
 };
 
 struct TransformationMatrix
@@ -161,6 +162,11 @@ struct SoundData
 	unsigned int bufferSize;
 };
 
+// カメラ
+struct CameraForGPU {
+	Vector3 worldPosition;
+};
+
 
 Transform uvTransformSprite{
 	{1.0f,1.0f,1.0f},
@@ -191,6 +197,18 @@ Matrix4x4 MakeIdentity4x4()
 		result.m[i][i] = 1.0f;
 	return result;
 }
+
+// 正規化
+static Vector3 Normalize(const Vector3& v) {
+	float len = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+	if (len == 0.0f) return { 0.0f, 0.0f, 0.0f };
+	return { v.x / len, v.y / len, v.z / len };
+}
+
+float Length(const Vector3& v) {
+	return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
 
 static LONG WINAPI ExportDump(EXCEPTION_POINTERS* exception)
 {
@@ -512,6 +530,7 @@ void Normalize(float& x, float& y, float& z)
 		y /= len;
 		z /= len;
 	}
+
 }
 
 // 球を描画する関数
@@ -1109,7 +1128,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	descriptionRootSignature.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
 	// RootParameter作成
-	D3D12_ROOT_PARAMETER rootParameters[4] = {};
+	D3D12_ROOT_PARAMETER rootParameters[5] = {};
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV; // CBVを使う
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL; // PixelShaderで使う
 	rootParameters[0].Descriptor.ShaderRegister = 0; // レジスタ番号０とバインド
@@ -1123,6 +1142,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	rootParameters[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV; // CBVを使う
 	rootParameters[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL; // PixelShaderで使う
 	rootParameters[3].Descriptor.ShaderRegister = 1; // レジスタ番号１を使う
+	rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV; // CBVを使う
+	rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL; // PixelShaderで使う
+	rootParameters[4].Descriptor.ShaderRegister = 2; // レジスタ番号2を使う
 
 	descriptionRootSignature.pParameters = rootParameters; // ルートパラメーター配列へのポインタ
 	descriptionRootSignature.NumParameters = _countof(rootParameters); // 配列の長さ
@@ -1264,6 +1286,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		IID_PPV_ARGS(&graphicsPipelineState));
 	assert(SUCCEEDED(hr));
 
+	//* カメラ *//
+	// カメラ用のリソースを作る
+	Microsoft::WRL::ComPtr <ID3D12Resource> cameraResource = CreateBufferResource(device, sizeof(CameraForGPU));
+	// マテリアルにデータを書き込む
+	CameraForGPU* cameraData = nullptr;
+	// 書き込むためのアドレスを取得
+	cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraData));
+
+
 	//* モデル *//
 
 	// インデックス
@@ -1293,7 +1324,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	}
 
 	// モデル読み込み
-	ModelData modelData = LoadObjFile("Resource", "fence.obj");
+	ModelData modelData = LoadObjFile("Resource", "ball.obj");
 	// 頂点バッファ用リソースを作成
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource = CreateBufferResource(device, sizeof(VertexData) * modelData.vertices.size());
 
@@ -1336,6 +1367,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	materialData->enableLighting = true;
 	// UVTransform行列
 	materialData->uvTransform = MakeIdentity4x4();
+	materialData->shininess = 70.0f;
 
 
 	// WVP用のリソースを作る。Matrix4x4 1つ分のサイズを用意する
@@ -1358,7 +1390,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	DirectionalLight* directionalLightData = nullptr;
 	directionalLightResource->Map(0, nullptr, reinterpret_cast<void**>(&directionalLightData));
 	directionalLightData->color = { 1.0f, 1.0f, 1.0f, 1.0f };
-	directionalLightData->direction = { 0.0f, -1.0f, 0.0f };
+	directionalLightData->direction = { 1.0f, -1.0f, 1.0f };
 	directionalLightData->intensity = 1.0f;
 	directionalLightResource->Unmap(0, nullptr);
 
@@ -1446,7 +1478,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	const uint32_t descriptorSizeDSV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
 	// TextureをtextureResource 読んで転送
-	DirectX::ScratchImage mipImages = LoadTexture("Resource/fence.png");
+	DirectX::ScratchImage mipImages = LoadTexture("Resource/monsterBall.png");
 	const DirectX::TexMetadata& metadata = mipImages.GetMetadata();
 	Microsoft::WRL::ComPtr<ID3D12Resource> textureResource = CreateTextureResource(device, metadata);
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource = UploadTextureData(textureResource, mipImages, device, commandList);
@@ -1530,9 +1562,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	ImGuiIO& io = ImGui::GetIO();
 
 	// 音声読み込み
-	SoundData soundData1 = SoundLoadWave("Resource/Alarm01.wav");
+	//SoundData soundData1 = SoundLoadWave("Resource/Alarm01.wav");
 	// 音声再生
-	SoundPlayWave(xAudio2, soundData1);
+	//SoundPlayWave(xAudio2, soundData1);
 
 	MSG msg{};
 	// ウィンドウのｘボタンが押されるまでループ
@@ -1601,12 +1633,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ImGui::SliderFloat("SpritePosY", &tranaformSprite.translate.y, 0.0f, 500.0f);
 
 			// ライトの向き
-			ImGui::SliderFloat("directionX", &directionalLightData->direction.x, -10.0f, 10.0f);
-			ImGui::SliderFloat("directionY", &directionalLightData->direction.y, -10.0f, 10.0f);
-			ImGui::SliderFloat("directionZ", &directionalLightData->direction.z, -10.0f, 10.0f);
-
-			// SRVの切り替え
-			ImGui::Checkbox("UseMonsterBall", &useMonsterBall);
+			ImGui::SliderFloat3("Light", &directionalLightData->direction.x, -1.0f, 1.0f);
+			if (Length(directionalLightData->direction) < 0.0001f) {
+				directionalLightData->direction = { 0.0f, -1.0f, 0.0f }; // デフォルト
+			}
+			directionalLightData->direction =
+				Normalize(directionalLightData->direction);
 
 			// UV座標
 			ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
@@ -1679,6 +1711,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);
 			// 平行光源
 			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
+			// cameraのCBufferの場所を設定
+			commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
 
 			// インデックスバッファビューを設定
 			commandList->IASetIndexBuffer(&indexBufferViewVertex);
@@ -1698,8 +1732,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			commandList->IASetIndexBuffer(&indexBufferViewSprite);
 			// インデックスを使って描画（Sprite）
 			//commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
-
-
 			// 実際のcommandListのImGuiの描画コマンドを詰む
 			ImGui::Render();
 			if (ImDrawData* draw_data = ImGui::GetDrawData())
