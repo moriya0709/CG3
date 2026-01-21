@@ -110,6 +110,7 @@ struct TransformationMatrix
 {
 	Matrix4x4 WVP;
 	Matrix4x4 World;
+	Matrix4x4 WorldInverseTranspose;
 };
 
 struct DirectionalLight
@@ -801,6 +802,19 @@ void SoundPlayWave(Microsoft::WRL::ComPtr<IXAudio2> xAudio2, const SoundData& so
 	result = pSourceVoice->SubmitSourceBuffer(&buf);
 	result = pSourceVoice->Start();
 
+}
+
+// 行列の転置
+Matrix4x4 Transpose(const Matrix4x4& m) {
+	Matrix4x4 result{};
+
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			result.m[i][j] = m.m[j][i];
+		}
+	}
+
+	return result;
 }
 
 // Windowsアプリでのエントリーポイント(main関数)
@@ -1612,8 +1626,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			// WVPmatrixを作る
 			Matrix4x4 worldViewProjectionMatrix = Multiply(Multiply(worldMatrix, viewMatrix), projectionMatrix);
 			*wvpData = worldViewProjectionMatrix;
+			// WorldInverse行列を作る
+			Matrix4x4 worldInverse = Inverse(worldMatrix);
+
 			transData->WVP = worldViewProjectionMatrix;   // WVP行列を設定
 			transData->World = worldMatrix; // World行列を設定
+			transData->WorldInverseTranspose = Transpose(worldInverse);; // World行列を設定
 
 
 
