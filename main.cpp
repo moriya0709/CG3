@@ -118,6 +118,14 @@ struct DirectionalLight
 	Vector4 color; // ライトの色
 	Vector3 direction; // ライトの向き
 	float intensity; // 輝度
+	bool isActive; // ライトの有効無効
+};
+
+struct PointLight {
+	Vector4 color; // ライトの色
+	Vector3 position; // ライトの位置
+	float intensity; // 輝度
+	bool isActive; // ライトの有効無効
 };
 
 struct MaterialData
@@ -1142,7 +1150,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	descriptionRootSignature.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
 	// RootParameter作成
-	D3D12_ROOT_PARAMETER rootParameters[5] = {};
+	D3D12_ROOT_PARAMETER rootParameters[6] = {};
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV; // CBVを使う
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL; // PixelShaderで使う
 	rootParameters[0].Descriptor.ShaderRegister = 0; // レジスタ番号０とバインド
@@ -1159,6 +1167,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	rootParameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV; // CBVを使う
 	rootParameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL; // PixelShaderで使う
 	rootParameters[4].Descriptor.ShaderRegister = 2; // レジスタ番号2を使う
+	rootParameters[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+	rootParameters[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[5].Descriptor.ShaderRegister = 3;
+
 
 	descriptionRootSignature.pParameters = rootParameters; // ルートパラメーター配列へのポインタ
 	descriptionRootSignature.NumParameters = _countof(rootParameters); // 配列の長さ
@@ -1380,8 +1392,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	directionalLightData->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	directionalLightData->direction = { 1.0f, -1.0f, 1.0f };
 	directionalLightData->intensity = 1.0f;
+	directionalLightData->isActive = false;
 	directionalLightResource->Unmap(0, nullptr);
 
+	// *ポイント光源*//
+
+	// ポイント光源用リソース（定数バッファ）を作成
+	Microsoft::WRL::ComPtr<ID3D12Resource> pointLightResource = CreateBufferResource(device, sizeof(PointLight));
+	PointLight* pointLightData = nullptr;
+	pointLightResource->Map(0, nullptr, reinterpret_cast<void**>(&pointLightData));
+	pointLightData->color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	pointLightData->position = { 0.0f, 2.0f, 0.0f };
+	pointLightData->intensity = 1.0f;
+	pointLightData->isActive = true;
+	pointLightResource->Unmap(0, nullptr);
 
 
 	// * モデル2 *//
@@ -1695,12 +1719,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			ImGui::SliderFloat("SpritePosX", &tranaformSprite.translate.x, 0.0f, 500.0f);
 			ImGui::SliderFloat("SpritePosY", &tranaformSprite.translate.y, 0.0f, 500.0f);
 
-			// ライトの向き
-			ImGui::SliderFloat3("Light", &directionalLightData->direction.x, -1.0f, 1.0f);
-			if (Length(directionalLightData->direction) < 0.0001f) {
-				directionalLightData->direction = { 0.0f, -1.0f, 0.0f }; // デフォルト
-			}
-			
+			// ライト
+			ImGui::SliderFloat3("DirectionalLight", &directionalLightData->direction.x, -1.0f, 1.0f);
+			ImGui::Checkbox("DirectionalLightOnOff", &directionalLightData->isActive);
+			ImGui::SliderFloat3("PointLight", &pointLightData->position.x, -10.0f, 10.0f);
+			ImGui::Checkbox("PointLightOnOff", &pointLightData->isActive);
+
 			// UV座標
 			ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
 			ImGui::DragFloat2("UVScale", &uvTransformSprite.scale.x, 0.01f, -10.0f, 10.0f);
@@ -1774,6 +1798,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
 			// cameraのCBufferの場所を設定
 			commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
+			// ポイント光源
+			commandList->SetGraphicsRootConstantBufferView(5, pointLightResource->GetGPUVirtualAddress());
+
 
 			// 描画
 			commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
@@ -1798,6 +1825,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
 			// cameraのCBufferの場所を設定
 			commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
+			// ポイント光源
+			commandList->SetGraphicsRootConstantBufferView(5, pointLightResource->GetGPUVirtualAddress());
+
 			
 			// 描画
 			commandList->DrawInstanced(UINT(modelData2.vertices.size()), 1, 0, 0);
