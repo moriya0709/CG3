@@ -1311,34 +1311,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	//* モデル *//
 
-	// インデックス
-	Microsoft::WRL::ComPtr<ID3D12Resource> indexVertexResource = CreateBufferResource(device, sizeof(uint32_t) * 2400);
-
-	D3D12_INDEX_BUFFER_VIEW indexBufferViewVertex{};
-	// リソースの先頭のアドレスから使う
-	indexBufferViewVertex.BufferLocation = indexVertexResource->GetGPUVirtualAddress();
-	// 使用するリソースのサイズはインデックス６つ分のサイズ
-	indexBufferViewVertex.SizeInBytes = sizeof(uint32_t) * 2400;
-	// インデックスはuint32_tとする
-	indexBufferViewVertex.Format = DXGI_FORMAT_R32_UINT;
-
-	// インデックスリソースにデータを書き込む
-	uint32_t* indexDataVertex = nullptr;
-	indexVertexResource->Map(0, nullptr, reinterpret_cast<void**>(&indexDataVertex));
-
-	// 球のインデックスデータを設定する
-	for (uint32_t i = 0; i < 2400; i += 6)
-	{
-		indexDataVertex[i + 0] = i + 0;
-		indexDataVertex[i + 1] = i + 1;
-		indexDataVertex[i + 2] = i + 2;
-		indexDataVertex[i + 3] = i + 2;
-		indexDataVertex[i + 4] = i + 1;
-		indexDataVertex[i + 5] = i + 3;
-	}
-
 	// モデル読み込み
-	ModelData modelData = LoadObjFile("Resource", "ball.obj");
+	ModelData modelData = LoadObjFile("Resource", "terrain.obj");
 	// 頂点バッファ用リソースを作成
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource = CreateBufferResource(device, sizeof(VertexData) * modelData.vertices.size());
 
@@ -1407,6 +1381,73 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	directionalLightData->direction = { 1.0f, -1.0f, 1.0f };
 	directionalLightData->intensity = 1.0f;
 	directionalLightResource->Unmap(0, nullptr);
+
+
+
+	// * モデル2 *//
+
+
+	// モデル読み込み
+	ModelData modelData2 = LoadObjFile("Resource", "ball.obj");
+	// 頂点バッファ用リソースを作成
+	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource2 = CreateBufferResource(device, sizeof(VertexData) * modelData2.vertices.size());
+
+	// 頂点バッファビューを作成する
+	D3D12_VERTEX_BUFFER_VIEW vertexBufferView2 = {};
+	vertexBufferView2.BufferLocation = vertexResource2->GetGPUVirtualAddress();
+	// 使用するリソースのサイズ
+	vertexBufferView2.SizeInBytes = UINT(sizeof(VertexData) * modelData2.vertices.size());
+	// 1頂点あたりのサイズ
+	vertexBufferView2.StrideInBytes = sizeof(VertexData);
+
+	// 頂点リソースにデータを書き込む
+	VertexData* vertexData2 = nullptr;
+	// 書き込むためのアドレスを取得
+	vertexResource2->Map(0, nullptr, reinterpret_cast<void**>(&vertexData2));
+	std::memcpy(vertexData2, modelData2.vertices.data(), sizeof(VertexData)* modelData2.vertices.size());
+
+	// depthStencilリソース
+	Microsoft::WRL::ComPtr<ID3D12Resource> depthStencilResource2 = CreatDepthStenCilTextureResource(device, kClientWidth, kClientHeight);
+	// DSV用のヒープでディスクリプタの数は１。DSVはShader内で触るものではないので、ShaderVicibleはfalse
+	Microsoft::WRL::ComPtr <ID3D12DescriptorHeap> dsvDescriptorHeap2 = CreateDescriptorHeap(device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);
+
+	// DSVの設定
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc2{};
+	dsvDesc2.Format = DXGI_FORMAT_D24_UNORM_S8_UINT; // Format。基本的にはResourceに合わせる
+	dsvDesc2.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D; // 2dTexture
+	// DSSVHeapの先頭にDSVをつくる
+	device->CreateDepthStencilView(depthStencilResource2.Get(), &dsvDesc2, dsvDescriptorHeap2->GetCPUDescriptorHandleForHeapStart());
+
+	// マテリアル用のリソースを作る。今回はcolor１つ分のサイズを用意する
+	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource2 = CreateBufferResource(device, sizeof(Material));
+	// マテリアルにデータを書き込む
+	Material* materialData2 = nullptr;
+	// 書き込むためのアドレスを取得
+	materialResource2->Map(0, nullptr, reinterpret_cast<void**>(&materialData2));
+
+	// 色を設定する
+	materialData2->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+	// Lightingするかどうか
+	materialData2->enableLighting = true;
+	// UVTransform行列
+	materialData2->uvTransform = MakeIdentity4x4();
+	materialData2->shininess = 8.0f;
+
+
+	// WVP用のリソースを作る。Matrix4x4 1つ分のサイズを用意する
+	Microsoft::WRL::ComPtr<ID3D12Resource> wvpResource2 = CreateBufferResource(device, sizeof(Matrix4x4));
+	// データを書き込む
+	Matrix4x4* wvpData2 = nullptr;
+	// 書き込むためのアドレスを取得
+	wvpResource2->Map(0, nullptr, reinterpret_cast<void**>(&wvpData2));
+	// 単位行列を書き込んでおく
+	*wvpData2 = MakeIdentity4x4();
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> transResource2 = CreateBufferResource(device, sizeof(TransformationMatrix));
+	TransformationMatrix* transData2 = nullptr;
+	transResource2->Map(0, nullptr, reinterpret_cast<void**>(&transData2));
+
+
 
 
 	//*　インデックス　*//
@@ -1633,6 +1674,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			transData->World = worldMatrix; // World行列を設定
 			transData->WorldInverseTranspose = Transpose(worldInverse);; // World行列を設定
 
+			transData2->WVP = worldViewProjectionMatrix;   // WVP行列を設定
+			transData2->World = worldMatrix; // World行列を設定
+			transData2->WorldInverseTranspose = Transpose(worldInverse);; // World行列を設定
+
 
 
 			// Sprite用のWorldViewProjectionMatrixを作る
@@ -1709,7 +1754,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			commandList->SetDescriptorHeaps(1, heaps);
 
 
-			// 球を描画
+			// モデルを描画
 			commandList->RSSetViewports(1, &viewport); // Viewportを設定
 			commandList->RSSetScissorRects(1, &scissorRect); // Scirssorを設定
 			// RootSignatureを設定。PSOに設定しているけど別途設定が必要
@@ -1730,10 +1775,33 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			// cameraのCBufferの場所を設定
 			commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
 
-			// インデックスバッファビューを設定
-			commandList->IASetIndexBuffer(&indexBufferViewVertex);
-			// インデックスを使って描画（球）
+			// 描画
 			commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
+
+			// 球を描画
+			commandList->RSSetViewports(1, &viewport); // Viewportを設定
+			commandList->RSSetScissorRects(1, &scissorRect); // Scirssorを設定
+			// RootSignatureを設定。PSOに設定しているけど別途設定が必要
+			commandList->SetGraphicsRootSignature(rootSignature.Get());
+			commandList->SetPipelineState(graphicsPipelineState.Get()); // PSOを設定
+			commandList->IASetVertexBuffers(0, 1, &vertexBufferView2); // VBVを設定
+			// 形状を設定。PSOに設定しているものとはまた別。同じものを設定すると考えておけ良い
+			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+			// マテリアルCBufferの場所を設定
+			commandList->SetGraphicsRootConstantBufferView(0, materialResource2->GetGPUVirtualAddress());
+			// wvp用とWorld用のCBufferの場所を設定
+			commandList->SetGraphicsRootConstantBufferView(1, transResource2->GetGPUVirtualAddress());
+			// SRVのDescriptorTableの先頭を設定。2はrootParameter[2]である。
+			commandList->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
+			// 平行光源
+			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
+			// cameraのCBufferの場所を設定
+			commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
+			
+			// 描画
+			commandList->DrawInstanced(UINT(modelData2.vertices.size()), 1, 0, 0);
+
 
 			// Spriteの描画。変更が必要なものだけ変更する
 			commandList->IASetVertexBuffers(0, 1, &vertexBufferViewSprite);// VBVを設定
