@@ -31,6 +31,10 @@
 #include "externals/DirectXTex/DirectXTex.h"
 #include "externals/DirectXTex/d3dx12.h"
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 #pragma comment(lib,"D3d12.lib")
@@ -1311,34 +1315,60 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	//* モデル *//
 
-	// インデックス
-	Microsoft::WRL::ComPtr<ID3D12Resource> indexVertexResource = CreateBufferResource(device, sizeof(uint32_t) * 2400);
-
-	D3D12_INDEX_BUFFER_VIEW indexBufferViewVertex{};
-	// リソースの先頭のアドレスから使う
-	indexBufferViewVertex.BufferLocation = indexVertexResource->GetGPUVirtualAddress();
-	// 使用するリソースのサイズはインデックス６つ分のサイズ
-	indexBufferViewVertex.SizeInBytes = sizeof(uint32_t) * 2400;
-	// インデックスはuint32_tとする
-	indexBufferViewVertex.Format = DXGI_FORMAT_R32_UINT;
-
-	// インデックスリソースにデータを書き込む
-	uint32_t* indexDataVertex = nullptr;
-	indexVertexResource->Map(0, nullptr, reinterpret_cast<void**>(&indexDataVertex));
-
-	// 球のインデックスデータを設定する
-	for (uint32_t i = 0; i < 2400; i += 6)
-	{
-		indexDataVertex[i + 0] = i + 0;
-		indexDataVertex[i + 1] = i + 1;
-		indexDataVertex[i + 2] = i + 2;
-		indexDataVertex[i + 3] = i + 2;
-		indexDataVertex[i + 4] = i + 1;
-		indexDataVertex[i + 5] = i + 3;
-	}
-
 	// モデル読み込み
-	ModelData modelData = LoadObjFile("Resource", "ball.obj");
+	ModelData modelData;
+	std::string directoryPath = "Resource"; // モデルのディレクトリパス
+	std::string filename = "ball.obj"; // モデルのディレクトリパス
+
+	// assimp
+	Assimp::Importer importer;
+	std::string filePath = directoryPath + "/" + filename;
+	const aiScene* scene = importer.ReadFile(filePath.c_str(), aiProcess_FlipWindingOrder | aiProcess_FlipUVs);
+	assert(scene->HasMeshes()); // メッシュがないのは対応しない
+
+	// メッシュを解析
+	for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
+		aiMesh* mesh = scene->mMeshes[meshIndex];
+		assert(mesh->HasNormals()); // 法線がないMeshは今回は非対応
+		assert(mesh->HasTextureCoords(0)); // TexCoordがないMeshは今回は非対応
+		// 個々からMeshの中身(Face)の解析を行っていく
+
+		// faceを解析
+		for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
+			aiFace& face = mesh->mFaces[faceIndex];
+			assert(face.mNumIndices == 3); // 三角形のみサポート
+			// ここからFaceの中身(Vertex)の解析を行っていく
+
+			// vertexを解析
+			for (uint32_t element = 0; element < face.mNumIndices; ++element) {
+				uint32_t vertexIndex = face.mIndices[element];
+				aiVector3D& position = mesh->mVertices[vertexIndex];
+				aiVector3D& normal = mesh->mNormals[vertexIndex];
+				aiVector3D& texcoord = mesh->mTextureCoords[0][vertexIndex];
+				VertexData vertex;
+				vertex.position = { position.x,position.y,position.z,1.0f };
+				vertex.normal = { normal.x,normal.y,normal.z };
+				vertex.texcoord = { texcoord.x,texcoord.y };
+				// aiProcess_MakeLeftHandedはz*=-1で、右手->左手に変換するので手動で対処
+				vertex.position.x *= -1.0f;
+				vertex.normal.x *= -1.0f;
+				modelData.vertices.push_back(vertex);
+
+			}
+		}
+
+		// マテリアルを解析
+		for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
+			aiMaterial* material = scene->mMaterials[materialIndex];
+			if (material->GetTextureCount(aiTextureType_DIFFUSE) != 0) {
+				aiString textureFilePath;
+				material->GetTexture(aiTextureType_DIFFUSE, 0, &textureFilePath);
+				modelData.material.textureFilePath = directoryPath + "/" + textureFilePath.C_Str();
+			}
+		}
+
+	}
+	
 	// 頂点バッファ用リソースを作成
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource = CreateBufferResource(device, sizeof(VertexData) * modelData.vertices.size());
 
@@ -1554,6 +1584,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	scissorRect.top = 0;
 	scissorRect.bottom = kClientHeight;
 
+	
+
 
 	// ImGuiの初期化
 	IMGUI_CHECKVERSION();
@@ -1730,8 +1762,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			// cameraのCBufferの場所を設定
 			commandList->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
 
-			// インデックスバッファビューを設定
-			commandList->IASetIndexBuffer(&indexBufferViewVertex);
 			// インデックスを使って描画（球）
 			commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
 
