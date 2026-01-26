@@ -861,7 +861,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// ウィンドウプロシージャ
 	wc.lpfnWndProc = WindowProc;
 	//ウィンドウクラス名（なんでも良い）
-	wc.lpszClassName = L"CG2WindowClass";
+	wc.lpszClassName = L"CG3WindowClass";
 	// インスタンスハンドル
 	wc.hInstance = GetModuleHandle(nullptr);
 	// カーソル
@@ -883,7 +883,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// ウインドウの生成
 	HWND hwnd = CreateWindow(
 		wc.lpszClassName,		// 利用するクラス名
-		L"CG2",					// タイトルバーの文字（何でも良い）
+		L"CG3",					// タイトルバーの文字（何でも良い）
 		WS_OVERLAPPEDWINDOW,	// 良く見るウィンドウスタイル
 		CW_USEDEFAULT,			// 表示X座標（Windowsに任せる）
 		CW_USEDEFAULT,			// 表示Y座標（Windowsに任せる)
